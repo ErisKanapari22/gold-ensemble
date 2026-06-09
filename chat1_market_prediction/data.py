@@ -80,22 +80,35 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def generate_labels(df: pd.DataFrame, threshold: float) -> np.ndarray:
+def generate_labels(df: pd.DataFrame, threshold: float, atr_filter: float):
     """
-    Forward-looking label: based on next candle's close vs current close.
-    UP=0, DOWN=1, NEUTRAL=2
+    Binary labeling: DIRECTIONAL (0) vs NEUTRAL (1).
+
+    A candle is DIRECTIONAL when both conditions hold:
+      1. |pct move| exceeds `threshold`
+      2. absolute price move exceeds `atr_filter * ATR14`  (filters tick noise)
+
+    Also returns a `directions` array (+1=UP, -1=DOWN, 0=NEUTRAL) so predict.py
+    can reconstruct the original UP/DOWN/NEUTRAL signal from the binary prediction.
+
+    Returns:
+        labels:     np.ndarray — 0=DIRECTIONAL, 1=NEUTRAL
+        directions: np.ndarray — +1=UP, -1=DOWN, 0=NEUTRAL
     """
-    close = df["Close"].values
-    labels = []
+    close      = df["Close"].values
+    atr_values = df["atr14"].values
+    labels     = []
+    directions = []
     for i in range(len(close) - 1):
-        pct = (close[i + 1] - close[i]) / close[i]
-        if pct > threshold:
-            labels.append(0)   # UP
-        elif pct < -threshold:
-            labels.append(1)   # DOWN
+        pct      = (close[i + 1] - close[i]) / close[i]
+        min_move = atr_filter * atr_values[i]
+        if abs(pct) > threshold and abs(pct * close[i]) > min_move:
+            labels.append(0)                            # DIRECTIONAL
+            directions.append(1 if pct > 0 else -1)    # +1=UP, -1=DOWN
         else:
-            labels.append(2)   # NEUTRAL
-    return np.array(labels)
+            labels.append(1)                            # NEUTRAL
+            directions.append(0)
+    return np.array(labels), np.array(directions)
 
 
 # ── Sliding Window ────────────────────────────────────────────────────────────
@@ -145,7 +158,12 @@ def get_dataloaders(csv_path: str = None):
     df = engineer_features(raw)
 
     # 3. Labels (needs Close; computed before we drop the price columns)
-    labels_full = generate_labels(df, config.LABEL_THRESHOLD)
+    labels_full, directions_full = generate_labels(df, config.LABEL_THRESHOLD, config.ATR_FILTER)
+    n_total = len(labels_full)
+    print(f"Label distribution (threshold=+-{config.LABEL_THRESHOLD*100:.1f}%, ATR_FILTER={config.ATR_FILTER}):")
+    for cls, name in enumerate(config.CLASS_NAMES):
+        count = int((labels_full == cls).sum())
+        print(f"  {name:>12}: {count:5d}  ({count / n_total * 100:.1f}%)")
     # Trim df to match label length (last row has no forward label)
     df = df.iloc[: len(labels_full)].reset_index(drop=True)
 
@@ -164,7 +182,7 @@ def get_dataloaders(csv_path: str = None):
 
     # 7. Persist scaler for predict.py
     joblib.dump(scaler, config.SCALER_PATH)
-    print(f"Scaler saved → {config.SCALER_PATH}")
+    print(f"Scaler saved -> {config.SCALER_PATH}")
 
     # 8. Build sliding-window sequences
     X_train, y_train = build_sequences(train_feat, train_lbl, config.LOOKBACK)

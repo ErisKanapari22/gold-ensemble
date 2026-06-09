@@ -37,9 +37,14 @@ def train():
     # Data
     train_loader, val_loader = get_dataloaders()
 
+    # Static class weights from config
+    class_weights = torch.tensor(config.CLASS_WEIGHTS, dtype=torch.float32).to(device)
+    weight_str = "  ".join(f"{n}={class_weights[i]:.1f}" for i, n in enumerate(config.CLASS_NAMES))
+    print(f"Class weights: {weight_str}")
+
     # Model, loss, optimizer, scheduler
     model = MarketPredictionModel().to(device)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
     optimizer = AdamW(
         model.parameters(),
         lr=config.LEARNING_RATE,
@@ -47,7 +52,8 @@ def train():
     )
     scheduler = CosineAnnealingLR(optimizer, T_max=config.EPOCHS)
 
-    best_val_loss = float("inf")
+    best_val_loss = 0.0 
+    patience_counter = 0
 
     for epoch in range(1, config.EPOCHS + 1):
         # ── Train ──
@@ -72,6 +78,7 @@ def train():
         # ── Validate ──
         model.eval()
         val_loss, val_correct, val_total = 0.0, 0, 0
+        all_val_true, all_val_preds = [], []
         with torch.no_grad():
             for X_batch, y_batch in val_loader:
                 X_batch, y_batch = X_batch.to(device), y_batch.to(device)
@@ -81,6 +88,8 @@ def train():
                 preds        = logits.argmax(dim=1)
                 val_correct += (preds == y_batch).sum().item()
                 val_total   += len(y_batch)
+                all_val_true.extend(y_batch.cpu().tolist())
+                all_val_preds.extend(preds.cpu().tolist())
 
         avg_train_loss = train_loss / train_total
         avg_val_loss   = val_loss   / val_total
@@ -93,21 +102,44 @@ def train():
             f"Val Loss:   {avg_val_loss:.4f}  Acc: {val_acc:.3f}"
         )
 
-        # ── Checkpoint (best val loss) ──
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
+        # Per-class recall via confusion matrix (pure torch, no sklearn)
+        conf_matrix = torch.zeros(config.N_CLASSES, config.N_CLASSES, dtype=torch.long)
+        for true, pred in zip(all_val_true, all_val_preds):
+            conf_matrix[true][pred] += 1
+        for i, name in enumerate(config.CLASS_NAMES):
+            tp    = conf_matrix[i, i].item()
+            total = conf_matrix[i].sum().item()
+            recall = tp / total if total > 0 else 0.0
+            print(f"    {name} recall: {recall:.3f}  ({tp}/{total})")
+
+        # ── DIRECTIONAL F1 checkpoint ──
+        dp      = conf_matrix[0, 0].item()
+        dp_pred = conf_matrix[:, 0].sum().item()
+        dp_true = conf_matrix[0].sum().item()
+        prec    = dp / dp_pred if dp_pred > 0 else 0.0
+        rec     = dp / dp_true if dp_true > 0 else 0.0
+        dir_f1  = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0
+        print(f"    DIRECTIONAL F1: {dir_f1:.3f}  (prec={prec:.3f}  rec={rec:.3f})")
+
+        if dir_f1 > best_val_loss:
+            best_val_loss = dir_f1
+            patience_counter = 0
             torch.save(
                 {
                     "epoch": epoch,
                     "model_state_dict": model.state_dict(),
-                    "val_loss": best_val_loss,
-                    "val_acc": val_acc,
+                    "dir_f1": dir_f1,
                 },
                 config.CHECKPOINT_PATH,
             )
-            print(f"  ✓ Checkpoint saved (val_loss={best_val_loss:.4f})")
+            print(f"  [saved] Checkpoint (DIRECTIONAL F1={dir_f1:.3f})")
+        else:
+            patience_counter += 1
+            if patience_counter >= config.PATIENCE:
+                print(f"\n  Early stopping at epoch {epoch} (no improvement for {config.PATIENCE} epochs)")
+                break
 
-    print(f"\nTraining complete. Best val loss: {best_val_loss:.4f}")
+    print(f"\nTraining complete. Best DIRECTIONAL F1: {best_val_loss:.4f}")
     print(f"Checkpoint: {config.CHECKPOINT_PATH}")
 
 

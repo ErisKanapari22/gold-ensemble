@@ -23,8 +23,8 @@ from data import engineer_features
 from model import MarketPredictionModel
 
 
-# Label index → string
-IDX_TO_SIGNAL = {0: "UP", 1: "DOWN", 2: "NEUTRAL"}
+# Binary model: 0=DIRECTIONAL, 1=NEUTRAL
+# Direction (UP vs DOWN) is reconstructed from the last candle's actual return.
 
 
 def load_model_and_scaler():
@@ -101,16 +101,23 @@ def get_signal(ohlcv_df: pd.DataFrame = None) -> dict:
     # 5. Build tensor: [1, 60, n_features]
     x = torch.tensor(window_scaled, dtype=torch.float32).unsqueeze(0).to(device)
 
-    # 6. Forward pass
+    # 6. Forward pass — binary: 0=DIRECTIONAL, 1=NEUTRAL
     with torch.no_grad():
-        logits = model(x)                         # [1, 3]
-        probs  = torch.softmax(logits, dim=1)[0]  # [3]
+        logits = model(x)                         # [1, 2]
+        probs  = torch.softmax(logits, dim=1)[0]  # [2]
 
-    pred_idx    = probs.argmax().item()
-    confidence  = probs[pred_idx].item()
-    signal_str  = IDX_TO_SIGNAL[pred_idx]
+    pred_idx   = probs.argmax().item()
+    confidence = probs[pred_idx].item()
 
-    # 7. Build output dict (keys must match aggregator contract exactly)
+    # 7. Reconstruct UP / DOWN / NEUTRAL from the binary prediction
+    if pred_idx == 0:  # DIRECTIONAL — use last candle's actual return for direction
+        close_vals  = df["Close"].values
+        last_return = float(close_vals[-1]) - float(close_vals[-2])
+        signal_str  = "UP" if last_return > 0 else "DOWN"
+    else:
+        signal_str = "NEUTRAL"
+
+    # 8. Build output dict (keys must match aggregator contract exactly)
     output = {
         "model":      "market_prediction",
         "asset":      "XAU/USD",

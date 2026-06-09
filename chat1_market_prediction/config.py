@@ -13,6 +13,7 @@ TIMEFRAME = "1h"                  # Candle interval
 LOOKBACK = 60                     # Sequence length fed to the model (candles)
 TRAIN_RATIO = 0.80                # Chronological split — no shuffling
 LABEL_THRESHOLD = 0.002           # ±0.2% next-close move → UP / DOWN, else NEUTRAL
+ATR_FILTER = 0.5                  # move must also exceed ATR_FILTER * ATR14 (price units) to be labeled UP/DOWN
 
 # Feature columns produced by data.py (order must stay consistent)
 FEATURE_COLS = [
@@ -33,14 +34,17 @@ N_FEATURES = len(FEATURE_COLS)    # Input dimension per timestep
 D_MODEL = 64                      # Transformer hidden dimension
 N_HEADS = 4                       # Attention heads (D_MODEL must be divisible by N_HEADS)
 N_LAYERS = 2                      # Transformer encoder layers
-DROPOUT = 0.1
-N_CLASSES = 3                     # UP=0, DOWN=1, NEUTRAL=2
+DROPOUT = 0.2
+N_CLASSES = 2                     # DIRECTIONAL=0, NEUTRAL=1
+CLASS_NAMES = ["DIRECTIONAL", "NEUTRAL"]
+CLASS_WEIGHTS = [2.0, 1.0]       # DIRECTIONAL gets 3x weight to counter class imbalance
 
 # ── Training ──────────────────────────────────────────────────────────────────
 EPOCHS = 50
 BATCH_SIZE = 64
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 3e-4
 WEIGHT_DECAY = 1e-4
+PATIENCE = 10                     # Early stopping: halt if val loss doesn't improve for this many epochs
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
