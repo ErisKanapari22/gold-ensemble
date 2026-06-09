@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.pt
+*.pkl
+data_cache.csv
+.env
