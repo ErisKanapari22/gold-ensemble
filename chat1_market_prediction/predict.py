@@ -62,6 +62,8 @@ def fetch_latest_candles(n: int = config.LOOKBACK + 50) -> pd.DataFrame:
         auto_adjust=True,
         progress=False,
     )
+    if isinstance(raw.columns, pd.MultiIndex):
+        raw.columns = raw.columns.get_level_values(0)
     return raw.tail(n)
 
 

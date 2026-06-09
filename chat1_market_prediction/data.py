@@ -41,9 +41,15 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     Uses the `ta` library for indicator calculations.
     """
     df = df.copy()
-    close = df["Close"]
-    high  = df["High"]
-    low   = df["Low"]
+
+    # Flatten MultiIndex columns if present (yfinance ≥0.2 quirk)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    # Ensure Series are 1-D (squeeze out any extra dimension)
+    close = df["Close"].squeeze()
+    high  = df["High"].squeeze()
+    low   = df["Low"].squeeze()
 
     # Returns (log)
     df["returns"] = np.log(close / close.shift(1))
@@ -129,6 +135,10 @@ def get_dataloaders(csv_path: str = None):
             auto_adjust=True,
             progress=False,
         )
+        # yfinance ≥0.2.x returns a MultiIndex columns (Price, Ticker).
+        # Flatten to single-level so ta indicators receive 1-D Series.
+        if isinstance(raw.columns, pd.MultiIndex):
+            raw.columns = raw.columns.get_level_values(0)
         raw.to_csv(config.DATA_CACHE_PATH)
 
     # 2. Engineer features
