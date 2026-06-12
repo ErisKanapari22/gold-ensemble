@@ -30,22 +30,9 @@ class MacroPositionModel(nn.Module):
         super().__init__()
 
         self.network = nn.Sequential(
-            # Input normalization — critical for mixed-scale macro features
-            # (e.g. DXY ~100, CPI ~3.0, real yield ~1.5 are very different scales)
             nn.BatchNorm1d(n_features),
-
-            # Layer 1
-            nn.Linear(n_features, hidden_1),
-            nn.ReLU(),
             nn.Dropout(dropout),
-
-            # Layer 2
-            nn.Linear(hidden_1, hidden_2),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-
-            # Output — raw logits (CrossEntropyLoss expects logits, not softmax)
-            nn.Linear(hidden_2, n_classes),
+            nn.Linear(n_features, n_classes),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

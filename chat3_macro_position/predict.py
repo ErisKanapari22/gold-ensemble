@@ -54,6 +54,10 @@ def reconstruct_direction(row: pd.Series) -> tuple[str, bool]:
     Score macro factors bullish (+1) or bearish (-1) for Gold.
     Returns (direction_str, is_ambiguous).
 
+    Given the model's DIRECTIONAL F1 is modest (~0.22), this scoring acts
+    as a sanity layer: even when the model says DIRECTIONAL, we only commit
+    to UP/DOWN if the underlying macro factors agree. Mixed signals -> NEUTRAL.
+
     Gold bullish factors:
       - real_yield_delta  < 0   (real yields falling)
       - dxy_chg20         < 0   (DXY weakening)
@@ -65,13 +69,13 @@ def reconstruct_direction(row: pd.Series) -> tuple[str, bool]:
     """
     score = 0
 
-    # Real yield trend — strongest single driver
+    # Real yield trend — strongest single driver (corr=0.15 in diagnostics)
     if row["real_yield_delta"] < -0.10:
-        score += 2    # strong bullish
+        score += 2
     elif row["real_yield_delta"] < 0:
         score += 1
     elif row["real_yield_delta"] > 0.10:
-        score -= 2    # strong bearish
+        score -= 2
     elif row["real_yield_delta"] > 0:
         score -= 1
 
@@ -103,7 +107,6 @@ def reconstruct_direction(row: pd.Series) -> tuple[str, bool]:
     elif row["spx_ret20"] > 3.0:
         score -= 1
 
-    # Ambiguous if score is exactly 0 or very mixed
     is_ambiguous = score == 0
 
     if score > 0:

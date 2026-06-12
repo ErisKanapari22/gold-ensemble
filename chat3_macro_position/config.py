@@ -35,19 +35,19 @@ FRED_SERIES = {
 
 # ── Model ──────────────────────────────────────────────────────────────────────
 N_FEATURES   = 15             # Number of engineered features (see data.py)
-HIDDEN_1     = 64
-HIDDEN_2     = 32
+HIDDEN_1     = 48
+HIDDEN_2     = 24
 DROPOUT      = 0.2
 N_CLASSES    = 2
 CLASS_NAMES  = ["DIRECTIONAL", "NEUTRAL"]
-CLASS_WEIGHTS = [2.0, 1.0]   # DIRECTIONAL weighted higher to counter imbalance
+CLASS_WEIGHTS = [1.0, 1.0]   # DIRECTIONAL weighted higher to counter imbalance
 
 # ── Training ───────────────────────────────────────────────────────────────────
 EPOCHS        = 100
 BATCH_SIZE    = 32
 LEARNING_RATE = 1e-3
-WEIGHT_DECAY  = 1e-4
-PATIENCE      = 10            # Early stopping on DIRECTIONAL F1
+WEIGHT_DECAY  = 1e-2
+PATIENCE      = 20            # Early stopping on DIRECTIONAL F1
 TRAIN_RATIO   = 0.80
 
 # ── Paths ──────────────────────────────────────────────────────────────────────

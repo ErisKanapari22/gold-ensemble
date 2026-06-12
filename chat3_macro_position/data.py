@@ -8,7 +8,7 @@ import pandas as pd
 import yfinance as yf
 import joblib
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from sklearn.preprocessing import StandardScaler
 from fredapi import Fred
 from datetime import datetime, timedelta
@@ -260,10 +260,19 @@ def get_dataloaders():
     print(f"Scaler saved -> {config.SCALER_PATH}")
 
     # DataLoaders
+    class_sample_counts = np.array([np.sum(train_lbl == t) for t in range(config.N_CLASSES)])
+    weights_per_class = 1.0 / class_sample_counts
+    sample_weights = weights_per_class[train_lbl]
+    sampler = WeightedRandomSampler(
+        weights=torch.tensor(sample_weights, dtype=torch.float32),
+        num_samples=len(sample_weights),
+        replacement=True,
+    )
+
     train_loader = DataLoader(
         MacroDataset(train_feat, train_lbl),
         batch_size=config.BATCH_SIZE,
-        shuffle=True,
+        sampler=sampler,
     )
     val_loader = DataLoader(
         MacroDataset(val_feat, val_lbl),
